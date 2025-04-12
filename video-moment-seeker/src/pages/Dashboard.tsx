@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/components/ui/use-toast";
-import Navbar from "@/components/dashboard/Navbar";
+import { Navbar } from "@/components/dashboard/Navbar";
 import QueryInput from "@/components/dashboard/QueryInput";
 import UploadSection from "@/components/dashboard/UploadSection";
 import VideoPlayer from "@/components/dashboard/VideoPlayer";
 import ResultVisualization from "@/components/dashboard/ResultVisualization";
 import { Video, FileText } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { motion } from "framer-motion";
 
 // Prediction response type
 interface PredictionResult {
@@ -15,7 +19,7 @@ interface PredictionResult {
   confidence: number;
 }
 
-const Dashboard = () => {
+export default function Dashboard() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -29,16 +33,26 @@ const Dashboard = () => {
   const [apiError, setApiError] = useState<string | null>(null);
   const [selectedClip, setSelectedClip] = useState<PredictionResult | null>(null);
   const [isClipMode, setIsClipMode] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // Backend URL from ngrok
-  const BACKEND_URL = "https://3681-34-125-57-71.ngrok-free.app";
+  const BACKEND_URL = "https://f9ab-34-125-77-138.ngrok-free.app";
 
   useEffect(() => {
-    // Check if user is logged in
-    const user = localStorage.getItem("user");
-    if (!user) {
-      navigate("/login");
-    }
+    const checkSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          navigate("/login");
+          return;
+        }
+        setIsAuthenticated(true);
+      } catch (error) {
+        console.error("Error checking session:", error);
+        navigate("/login");
+      }
+    };
+    checkSession();
   }, [navigate]);
 
   useEffect(() => {
@@ -84,11 +98,6 @@ const Dashboard = () => {
       const formData = new FormData();
       formData.append("video", videoFile);
       formData.append("query", query);
-      
-      // PDF handling temporarily disabled
-      // if (pdfFile) {
-      //   formData.append("pdf", pdfFile);
-      // }
       
       console.log("Sending request to:", `${BACKEND_URL}/predict`);
       console.log("Query:", query);
@@ -137,12 +146,59 @@ const Dashboard = () => {
       
       setResults(formattedResults);
 
-      // Automatically detect video length
+      // Get video duration
       const video = document.createElement('video');
       video.src = videoUrl!;
-      video.onloadedmetadata = () => {
-        setVideoLength(video.duration);
-      };
+      await new Promise((resolve) => {
+        video.onloadedmetadata = () => {
+          setVideoLength(video.duration);
+          resolve(video.duration);
+        };
+      });
+
+      // Save data to Supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error("User not authenticated");
+      }
+
+      try {
+        // Save all data to the history table
+        const { error: historyError } = await supabase
+          .from('history')
+          .insert({
+            user_id: user.id,
+            query_text: query,
+            video_filename: videoFile.name,
+            pdf_filename: pdfFile?.name || null,
+            results: formattedResults.map(result => ({
+              startTime: result.startTime,
+              endTime: result.endTime,
+              confidence: result.confidence
+            }))
+          });
+
+        if (historyError) {
+          console.error('Error saving to history:', historyError);
+          toast({
+            variant: "destructive",
+            title: "Database Error",
+            description: "Failed to save history. Error: " + historyError.message,
+          });
+        } else {
+          toast({
+            title: "Success",
+            description: "Query and results saved successfully.",
+          });
+        }
+      } catch (dbError) {
+        console.error('Database operation error:', dbError);
+        toast({
+          variant: "destructive",
+          title: "Database Error",
+          description: "Failed to save data to database. Please try again.",
+        });
+      }
 
       toast({
         title: "Prediction complete",
@@ -165,7 +221,9 @@ const Dashboard = () => {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to process your query. Please try again.",
+        description: error instanceof Error && error.message === "User not authenticated" 
+          ? "Please log in to save predictions."
+          : "Failed to process your query. Please try again.",
       });
       
       setResults([]);
@@ -198,37 +256,60 @@ const Dashboard = () => {
     setIsClipMode(false);
   };
 
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-4">Loading...</h1>
+          <p className="text-muted-foreground">Please wait while we verify your session.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen flex flex-col gradient-bg">
-      <Navbar />
+    <div className="min-h-screen bg-background">
+      <div className="flex items-center justify-between p-4">
+        <Link to="/" className="text-xl font-semibold">
+          Video Temporal Grounding
+        </Link>
+        <Navbar />
+      </div>
       
-      <main className="flex-1 container mx-auto px-4 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <main className="container mx-auto p-4">
+        {/* Query and Video Preview Row */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           {/* Query Section */}
-          <QueryInput 
-            onSubmit={handleSubmitQuery} 
-            videoFile={videoFile}
-            pdfFile={pdfFile}
-            isLoading={isLoading}
-            onPlayClip={handlePlayClip}
-            hasResults={results.length > 0}
-          />
-          
-          {/* Video Player (shown if video is uploaded or results are available) */}
-          {videoUrl && (
-            <VideoPlayer 
-              videoSrc={videoUrl} 
-              startTime={isClipMode && selectedClip ? selectedClip.startTime : 0}
-              endTime={isClipMode && selectedClip ? selectedClip.endTime : undefined}
-              title={results.length > 0 ? `Results for: "${currentQuery}"` : "Video Preview"}
-              onTimeUpdate={handleTimeUpdate}
-              error={apiError}
-              onExitClipMode={handleExitClipMode}
-              isClipMode={isClipMode}
+          <div>
+            <QueryInput 
+              onSubmit={handleSubmitQuery} 
+              videoFile={videoFile}
+              pdfFile={pdfFile}
+              isLoading={isLoading}
+              onPlayClip={handlePlayClip}
+              hasResults={results.length > 0}
             />
-          )}
+          </div>
           
-          {/* Upload Sections */}
+          {/* Video Player */}
+          <div>
+            {videoUrl && (
+              <VideoPlayer 
+                videoSrc={videoUrl} 
+                startTime={isClipMode && selectedClip ? selectedClip.startTime : 0}
+                endTime={isClipMode && selectedClip ? selectedClip.endTime : undefined}
+                title="Video Preview"
+                onTimeUpdate={handleTimeUpdate}
+                error={apiError}
+                onExitClipMode={handleExitClipMode}
+                isClipMode={isClipMode}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Import Sections Row */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <UploadSection
             title="Import Video"
             description="Upload a surveillance video file (.mp4, .webm)"
@@ -246,23 +327,22 @@ const Dashboard = () => {
             onFileSelect={handlePdfSelect}
             maxSize={50} // 50MB max
           />
-          
-          {/* Results Visualization (shown if results are available) */}
-          {results.length > 0 && (
-            <div className="lg:col-span-2">
-              <ResultVisualization 
-                results={results} 
-                videoLength={videoLength || 150} // Fallback to 150s if duration not detected
-                currentTime={currentTime}
-                onPlayClip={handlePlayClip}
-              />
-            </div>
-          )}
         </div>
+        
+        {/* Results Visualization (shown if results are available) */}
+        {results.length > 0 && (
+          <div className="mt-6">
+            <ResultVisualization
+              results={results}
+              currentTime={currentTime}
+              videoLength={videoLength}
+              onPlayClip={handlePlayClip}
+              onTimeClick={setCurrentTime}
+            />
+          </div>
+        )}
       </main>
     </div>
   );
-};
-
-export default Dashboard;
+}
 

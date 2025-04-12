@@ -1,10 +1,10 @@
-
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/lib/supabase";
 import AuthLayout from "./AuthLayout";
 
 const RegisterForm = () => {
@@ -30,24 +30,39 @@ const RegisterForm = () => {
     
     setIsLoading(true);
 
-    // Mock registration - replace with Supabase Auth when integrated
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      
-      // For demo purpose
-      localStorage.setItem("user", JSON.stringify({ name, email }));
-      toast({
-        title: "Account created",
-        description: "You've successfully registered!",
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name,
+          },
+        },
       });
-      navigate("/dashboard");
-    } catch (error) {
+
+      if (error) throw error;
+
+      if (data.user) {
+        // Insert into users table
+        const { error: profileError } = await supabase
+          .from('users')
+          .insert([{ id: data.user.id, name }]);
+
+        if (profileError) throw profileError;
+
+        toast({
+          title: "Account created",
+          description: "Please check your email to verify your account.",
+        });
+        navigate("/login");
+      }
+    } catch (error: any) {
       console.error("Registration error:", error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to register. Please try again.",
+        description: error.message || "Failed to register. Please try again.",
       });
     } finally {
       setIsLoading(false);

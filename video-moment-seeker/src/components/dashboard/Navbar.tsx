@@ -1,6 +1,4 @@
-
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -10,91 +8,103 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/use-toast";
-import { Menu, User, LogOut, Info, Home } from "lucide-react";
+import { User, LogOut, LogIn, UserPlus, LayoutDashboard, Home, Info } from "lucide-react";
+import { useAuth } from "@/lib/AuthContext";
+import { supabase } from "@/lib/supabase";
 
-const Navbar = () => {
-  const navigate = useNavigate();
+export function Navbar() {
+  const { user } = useAuth();
   const { toast } = useToast();
-  const [avatar, setAvatar] = useState<string | null>(null);
+  const navigate = useNavigate();
 
-  const handleLogout = () => {
-    // Remove user data from localStorage
-    localStorage.removeItem("user");
-    
-    toast({
-      title: "Logged out",
-      description: "You've been successfully logged out.",
-    });
-    
-    navigate("/login");
+  const handleLogout = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      
+      toast({
+        title: "Logged out successfully",
+        description: "You have been logged out of your account.",
+      });
+      navigate("/");
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error logging out",
+        description: error instanceof Error ? error.message : "An error occurred while logging out",
+      });
+    }
   };
 
-  const user = localStorage.getItem("user") 
-    ? JSON.parse(localStorage.getItem("user") || "{}") 
-    : null;
-
   return (
-    <nav className="flex items-center justify-between p-4 bg-card/70 border-b border-border/50 backdrop-blur-sm sticky top-0 z-10">
-      <div className="flex items-center space-x-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => navigate("/dashboard")}
-          className="mr-2"
-        >
+    <nav className="w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="container flex h-14 max-w-screen-2xl items-center">
+        <Link to="/" className="flex items-center gap-2 mr-6">
           <Home className="h-5 w-5" />
-          <span className="sr-only">Home</span>
-        </Button>
-        <h1 className="text-xl font-bold">Video Temporal Grounding</h1>
-      </div>
+          <span className="font-semibold">MMVTG</span>
+        </Link>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="icon">
-            <Menu className="h-5 w-5" />
-            <span className="sr-only">Open menu</span>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
-          {user && (
-            <>
-              <div className="flex items-center justify-start gap-2 p-2">
-                <div className="rounded-full bg-secondary flex items-center justify-center w-8 h-8">
-                  {avatar ? (
-                    <img
-                      src={avatar}
-                      alt="User avatar"
-                      className="rounded-full w-8 h-8"
-                    />
-                  ) : (
-                    <User className="h-4 w-4" />
-                  )}
+        {user && (
+          <Link to="/dashboard" className="flex items-center gap-2 mr-6">
+            <LayoutDashboard className="h-5 w-5" />
+            <span className="font-semibold">Dashboard</span>
+          </Link>
+        )}
+
+        <div className="flex-1" />
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="flex items-center gap-2">
+              <User className="h-4 w-4" />
+              {user ? user.email : "Account"}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            {user ? (
+              <>
+                <div className="px-2 py-1.5 text-sm font-medium text-muted-foreground">
+                  {user.email}
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium">{user.name || user.email}</span>
-                  <span className="text-xs text-muted-foreground">{user.email}</span>
-                </div>
-              </div>
-              <DropdownMenuSeparator />
-            </>
-          )}
-          <DropdownMenuItem onClick={() => navigate("/dashboard")}>
-            <Home className="mr-2 h-4 w-4" />
-            <span>Dashboard</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => navigate("/about")}>
-            <Info className="mr-2 h-4 w-4" />
-            <span>About</span>
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleLogout}>
-            <LogOut className="mr-2 h-4 w-4" />
-            <span>Logout</span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link to="/about" className="flex items-center">
+                    <Info className="mr-2 h-4 w-4" />
+                    About
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="flex items-center cursor-pointer">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Logout
+                </DropdownMenuItem>
+              </>
+            ) : (
+              <>
+                <DropdownMenuItem asChild>
+                  <Link to="/about" className="flex items-center">
+                    <Info className="mr-2 h-4 w-4" />
+                    About
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link to="/login" className="flex items-center">
+                    <LogIn className="mr-2 h-4 w-4" />
+                    Login
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/register" className="flex items-center">
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    Register
+                  </Link>
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </nav>
   );
-};
-
-export default Navbar;
+}
