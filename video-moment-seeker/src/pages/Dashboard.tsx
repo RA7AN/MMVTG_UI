@@ -36,8 +36,7 @@ export default function Dashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // Backend URL from ngrok
-  const BACKEND_URL = "https://f9ab-34-125-77-138.ngrok-free.app";
-
+  const BACKEND_URL = "https://ab00-34-125-180-86.ngrok-free.app";
   useEffect(() => {
     const checkSession = async () => {
       try {
